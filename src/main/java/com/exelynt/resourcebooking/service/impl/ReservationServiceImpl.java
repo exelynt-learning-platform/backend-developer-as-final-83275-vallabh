@@ -181,8 +181,13 @@ public class ReservationServiceImpl implements ReservationService {
 
     private void validateReservationTime(
             LocalDateTime startTime,
-            LocalDateTime endTime
-    ) {
+            LocalDateTime endTime) {
+
+        if (startTime.isBefore(LocalDateTime.now())) {
+            throw new ReservationValidationException(
+                    "Start time must be in the future"
+            );
+        }
 
         if (!endTime.isAfter(startTime)) {
             throw new ReservationValidationException(
