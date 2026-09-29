@@ -1,7 +1,8 @@
 package com.exelynt.resourcebooking.service;
 
-import com.exelynt.resourcebooking.dto.reservation.ReservationRequest;
+import com.exelynt.resourcebooking.dto.reservation.ReservationCreateRequest;
 import com.exelynt.resourcebooking.dto.reservation.ReservationResponse;
+import com.exelynt.resourcebooking.dto.reservation.ReservationUpdateRequest;
 import com.exelynt.resourcebooking.enums.ReservationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -11,7 +12,7 @@ import java.math.BigDecimal;
 public interface ReservationService {
 
     ReservationResponse createReservation(
-            ReservationRequest request,
+            ReservationCreateRequest request,
             String userEmail
     );
 
@@ -30,7 +31,7 @@ public interface ReservationService {
 
     ReservationResponse updateReservation(
             Long id,
-            ReservationRequest request
+            ReservationUpdateRequest request
     );
 
     void deleteReservation(Long id);

@@ -19,7 +19,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.exelynt.resourcebooking.dto.reservation.ReservationCreateRequest;
+import com.exelynt.resourcebooking.dto.reservation.ReservationUpdateRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -43,29 +44,40 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     @Transactional
     public ReservationResponse createReservation(
-            ReservationRequest request,
-            String userEmail
-    ) {
+            ReservationCreateRequest request,
+            String userEmail) {
 
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() ->
                         new ReservationValidationException(
                                 "Authenticated user not found"
-                        )
-                );
+                        ));
 
         Resource resource = resourceRepository.findById(request.resourceId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Resource not found with id: " + request.resourceId()
-                        )
-                );
-
+                                "Resource not found with id: "
+                                        + request.resourceId()
+                        ));
 
         validateReservationTime(
                 request.startTime(),
                 request.endTime()
         );
+
+        boolean overlappingReservation =
+                reservationRepository.existsOverlappingReservation(
+                        request.resourceId(),
+                        request.startTime(),
+                        request.endTime(),
+                        ReservationStatus.CANCELLED
+                );
+
+        if (overlappingReservation) {
+            throw new ReservationValidationException(
+                    "Resource is already reserved for the selected time"
+            );
+        }
 
         Reservation reservation = new Reservation();
 
@@ -74,13 +86,15 @@ public class ReservationServiceImpl implements ReservationService {
         reservation.setStartTime(request.startTime());
         reservation.setEndTime(request.endTime());
         reservation.setPrice(request.price());
-        reservation.setStatus(request.status());
 
-        Reservation savedReservation = reservationRepository.save(reservation);
+        // USER-created reservations always start as PENDING.
+        reservation.setStatus(ReservationStatus.PENDING);
+
+        Reservation savedReservation =
+                reservationRepository.save(reservation);
 
         return mapToResponse(savedReservation);
     }
-
     @Override
     @Transactional(readOnly = true)
     public Page<ReservationResponse> getReservations(
@@ -131,22 +145,20 @@ public class ReservationServiceImpl implements ReservationService {
     @Transactional
     public ReservationResponse updateReservation(
             Long id,
-            ReservationRequest request
-    ) {
+            ReservationUpdateRequest request) {
 
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() ->
                         new ReservationNotFoundException(
                                 "Reservation not found with id: " + id
-                        )
-                );
+                        ));
 
         Resource resource = resourceRepository.findById(request.resourceId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Resource not found with id: " + request.resourceId()
-                        )
-                );
+                                "Resource not found with id: "
+                                        + request.resourceId()
+                        ));
 
         validateReservationTime(
                 request.startTime(),

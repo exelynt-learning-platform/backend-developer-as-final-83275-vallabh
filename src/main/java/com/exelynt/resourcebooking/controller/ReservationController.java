@@ -1,5 +1,5 @@
 package com.exelynt.resourcebooking.controller;
-
+import com.exelynt.resourcebooking.exception.ReservationValidationException;
 import com.exelynt.resourcebooking.dto.reservation.ReservationRequest;
 import com.exelynt.resourcebooking.dto.reservation.ReservationResponse;
 import com.exelynt.resourcebooking.enums.ReservationStatus;
@@ -16,7 +16,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
+import com.exelynt.resourcebooking.dto.reservation.ReservationCreateRequest;
+import com.exelynt.resourcebooking.dto.reservation.ReservationUpdateRequest;
 @RestController
 @RequestMapping("/reservations")
 public class ReservationController {
@@ -30,14 +33,16 @@ public class ReservationController {
     @PostMapping
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<ReservationResponse> createReservation(
-            @Valid @RequestBody ReservationRequest request,
-            Authentication authentication
-    ) {
+            @Valid @RequestBody ReservationCreateRequest request,
+            Authentication authentication) {
 
         String userEmail = authentication.getName();
 
         ReservationResponse response =
-                reservationService.createReservation(request, userEmail);
+                reservationService.createReservation(
+                        request,
+                        userEmail
+                );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -54,27 +59,34 @@ public class ReservationController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDirection,
-            Authentication authentication
-    ) {
+            Authentication authentication) {
 
-        boolean isAdmin = authentication.getAuthorities()
-                .stream()
-                .anyMatch(authority ->
-                        authority.getAuthority().equals("ROLE_ADMIN")
-                );
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new ReservationValidationException(
+                    "Invalid sort field: " + sortBy
+            );
+        }
 
-        String userEmail = isAdmin ? null : authentication.getName();
+        if (!sortDirection.equalsIgnoreCase("asc")
+                && !sortDirection.equalsIgnoreCase("desc")) {
+            throw new ReservationValidationException(
+                    "Invalid sort direction: " + sortDirection
+            );
+        }
+
+        String userEmail = getUserEmailForAccess(authentication);
 
         Sort.Direction direction =
                 sortDirection.equalsIgnoreCase("desc")
                         ? Sort.Direction.DESC
                         : Sort.Direction.ASC;
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(direction, sortBy)
-        );
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by(direction, sortBy)
+                );
 
         Page<ReservationResponse> response =
                 reservationService.getReservations(
@@ -87,24 +99,19 @@ public class ReservationController {
 
         return ResponseEntity.ok(response);
     }
-
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<ReservationResponse> getReservationById(
             @PathVariable Long id,
-            Authentication authentication
-    ) {
+            Authentication authentication) {
 
-        boolean isAdmin = authentication.getAuthorities()
-                .stream()
-                .anyMatch(authority ->
-                        authority.getAuthority().equals("ROLE_ADMIN")
-                );
-
-        String userEmail = isAdmin ? null : authentication.getName();
+        String userEmail = getUserEmailForAccess(authentication);
 
         ReservationResponse response =
-                reservationService.getReservationById(id, userEmail);
+                reservationService.getReservationById(
+                        id,
+                        userEmail
+                );
 
         return ResponseEntity.ok(response);
     }
@@ -113,11 +120,13 @@ public class ReservationController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ReservationResponse> updateReservation(
             @PathVariable Long id,
-            @Valid @RequestBody ReservationRequest request
-    ) {
+            @Valid @RequestBody ReservationUpdateRequest request) {
 
         ReservationResponse response =
-                reservationService.updateReservation(id, request);
+                reservationService.updateReservation(
+                        id,
+                        request
+                );
 
         return ResponseEntity.ok(response);
     }
@@ -132,4 +141,19 @@ public class ReservationController {
 
         return ResponseEntity.noContent().build();
     }
+    private String getUserEmailForAccess(Authentication authentication) {
+
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(authority ->
+                        authority.getAuthority().equals("ROLE_ADMIN"));
+
+        return isAdmin ? null : authentication.getName();
+    }
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id",
+            "startTime",
+            "endTime",
+            "price",
+            "status"
+    );
 }
