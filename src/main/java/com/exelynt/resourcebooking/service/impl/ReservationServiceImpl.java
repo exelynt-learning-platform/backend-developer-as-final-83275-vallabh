@@ -1,7 +1,8 @@
 package com.exelynt.resourcebooking.service.impl;
 
-import com.exelynt.resourcebooking.dto.reservation.ReservationRequest;
+import com.exelynt.resourcebooking.dto.reservation.ReservationCreateRequest;
 import com.exelynt.resourcebooking.dto.reservation.ReservationResponse;
+import com.exelynt.resourcebooking.dto.reservation.ReservationUpdateRequest;
 import com.exelynt.resourcebooking.entity.Reservation;
 import com.exelynt.resourcebooking.entity.Resource;
 import com.exelynt.resourcebooking.entity.User;
@@ -10,7 +11,6 @@ import com.exelynt.resourcebooking.exception.ReservationAccessDeniedException;
 import com.exelynt.resourcebooking.exception.ReservationNotFoundException;
 import com.exelynt.resourcebooking.exception.ReservationValidationException;
 import com.exelynt.resourcebooking.exception.ResourceNotFoundException;
-
 import com.exelynt.resourcebooking.repository.ReservationRepository;
 import com.exelynt.resourcebooking.repository.ResourceRepository;
 import com.exelynt.resourcebooking.repository.UserRepository;
@@ -19,8 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.exelynt.resourcebooking.dto.reservation.ReservationCreateRequest;
-import com.exelynt.resourcebooking.dto.reservation.ReservationUpdateRequest;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -60,7 +59,7 @@ public class ReservationServiceImpl implements ReservationService {
                                         + request.resourceId()
                         ));
 
-        validateReservationTime(
+        validateReservationTimeForCreate(
                 request.startTime(),
                 request.endTime()
         );
@@ -68,6 +67,7 @@ public class ReservationServiceImpl implements ReservationService {
         boolean overlappingReservation =
                 reservationRepository.existsOverlappingReservation(
                         request.resourceId(),
+                        null,
                         request.startTime(),
                         request.endTime(),
                         ReservationStatus.CANCELLED
@@ -95,23 +95,27 @@ public class ReservationServiceImpl implements ReservationService {
 
         return mapToResponse(savedReservation);
     }
+
     @Override
     @Transactional(readOnly = true)
     public Page<ReservationResponse> getReservations(
             String userEmail,
+            boolean isAdmin,
             ReservationStatus status,
             BigDecimal minPrice,
             BigDecimal maxPrice,
-            Pageable pageable
-    ) {
+            Pageable pageable) {
 
-        Page<Reservation> reservations = reservationRepository.findReservations(
-                userEmail,
-                status,
-                minPrice,
-                maxPrice,
-                pageable
-        );
+        String emailFilter = isAdmin ? null : userEmail;
+
+        Page<Reservation> reservations =
+                reservationRepository.findReservations(
+                        emailFilter,
+                        status,
+                        minPrice,
+                        maxPrice,
+                        pageable
+                );
 
         return reservations.map(this::mapToResponse);
     }
@@ -120,17 +124,17 @@ public class ReservationServiceImpl implements ReservationService {
     @Transactional(readOnly = true)
     public ReservationResponse getReservationById(
             Long id,
-            String userEmail
-    ) {
+            String userEmail,
+            boolean isAdmin) {
 
-        Reservation reservation = reservationRepository.findById(id)
-                .orElseThrow(() ->
-                        new ReservationNotFoundException(
-                                "Reservation not found with id: " + id
-                        )
-                );
+        Reservation reservation =
+                reservationRepository.findById(id)
+                        .orElseThrow(() ->
+                                new ReservationNotFoundException(
+                                        "Reservation not found with id: " + id
+                                ));
 
-        if (userEmail != null &&
+        if (!isAdmin &&
                 !reservation.getUser().getEmail().equals(userEmail)) {
 
             throw new ReservationAccessDeniedException(
@@ -160,10 +164,25 @@ public class ReservationServiceImpl implements ReservationService {
                                         + request.resourceId()
                         ));
 
-        validateReservationTime(
+        validateReservationTimeForUpdate(
                 request.startTime(),
                 request.endTime()
         );
+
+        boolean overlappingReservation =
+                reservationRepository.existsOverlappingReservation(
+                        request.resourceId(),
+                        id,
+                        request.startTime(),
+                        request.endTime(),
+                        ReservationStatus.CANCELLED
+                );
+
+        if (overlappingReservation) {
+            throw new ReservationValidationException(
+                    "Resource is already reserved for the selected time"
+            );
+        }
 
         reservation.setResource(resource);
         reservation.setStartTime(request.startTime());
@@ -185,13 +204,12 @@ public class ReservationServiceImpl implements ReservationService {
                 .orElseThrow(() ->
                         new ReservationNotFoundException(
                                 "Reservation not found with id: " + id
-                        )
-                );
+                        ));
 
         reservationRepository.delete(reservation);
     }
 
-    private void validateReservationTime(
+    private void validateReservationTimeForCreate(
             LocalDateTime startTime,
             LocalDateTime endTime) {
 
@@ -201,6 +219,20 @@ public class ReservationServiceImpl implements ReservationService {
             );
         }
 
+        validateEndTime(startTime, endTime);
+    }
+
+    private void validateReservationTimeForUpdate(
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
+
+        validateEndTime(startTime, endTime);
+    }
+
+    private void validateEndTime(
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
+
         if (!endTime.isAfter(startTime)) {
             throw new ReservationValidationException(
                     "End time must be after start time"
@@ -209,8 +241,7 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     private ReservationResponse mapToResponse(
-            Reservation reservation
-    ) {
+            Reservation reservation) {
 
         return new ReservationResponse(
                 reservation.getId(),

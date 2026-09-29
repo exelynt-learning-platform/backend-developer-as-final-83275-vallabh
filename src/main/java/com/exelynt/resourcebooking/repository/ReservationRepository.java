@@ -33,12 +33,14 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
             SELECT COUNT(r) > 0
             FROM Reservation r
             WHERE r.resource.id = :resourceId
+              AND (:reservationId IS NULL OR r.id <> :reservationId)
               AND r.status <> :cancelledStatus
               AND r.startTime < :endTime
               AND r.endTime > :startTime
             """)
     boolean existsOverlappingReservation(
             @Param("resourceId") Long resourceId,
+            @Param("reservationId") Long reservationId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("cancelledStatus") ReservationStatus cancelledStatus

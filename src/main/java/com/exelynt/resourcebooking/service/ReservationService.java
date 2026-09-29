@@ -18,6 +18,7 @@ public interface ReservationService {
 
     Page<ReservationResponse> getReservations(
             String userEmail,
+            boolean isAdmin,
             ReservationStatus status,
             BigDecimal minPrice,
             BigDecimal maxPrice,
@@ -26,7 +27,8 @@ public interface ReservationService {
 
     ReservationResponse getReservationById(
             Long id,
-            String userEmail
+            String userEmail,
+            boolean isAdmin
     );
 
     ReservationResponse updateReservation(

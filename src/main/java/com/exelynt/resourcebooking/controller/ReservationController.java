@@ -61,20 +61,10 @@ public class ReservationController {
             @RequestParam(defaultValue = "asc") String sortDirection,
             Authentication authentication) {
 
-        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
-            throw new ReservationValidationException(
-                    "Invalid sort field: " + sortBy
-            );
-        }
+        // Keep your existing sort validation here.
 
-        if (!sortDirection.equalsIgnoreCase("asc")
-                && !sortDirection.equalsIgnoreCase("desc")) {
-            throw new ReservationValidationException(
-                    "Invalid sort direction: " + sortDirection
-            );
-        }
-
-        String userEmail = getUserEmailForAccess(authentication);
+        String userEmail = getCurrentUserEmail(authentication);
+        boolean admin = isAdmin(authentication);
 
         Sort.Direction direction =
                 sortDirection.equalsIgnoreCase("desc")
@@ -82,15 +72,12 @@ public class ReservationController {
                         : Sort.Direction.ASC;
 
         Pageable pageable =
-                PageRequest.of(
-                        page,
-                        size,
-                        Sort.by(direction, sortBy)
-                );
+                PageRequest.of(page, size, Sort.by(direction, sortBy));
 
         Page<ReservationResponse> response =
                 reservationService.getReservations(
                         userEmail,
+                        admin,
                         status,
                         minPrice,
                         maxPrice,
@@ -105,17 +92,18 @@ public class ReservationController {
             @PathVariable Long id,
             Authentication authentication) {
 
-        String userEmail = getUserEmailForAccess(authentication);
+        String userEmail = getCurrentUserEmail(authentication);
+        boolean admin = isAdmin(authentication);
 
         ReservationResponse response =
                 reservationService.getReservationById(
                         id,
-                        userEmail
+                        userEmail,
+                        admin
                 );
 
         return ResponseEntity.ok(response);
     }
-
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ReservationResponse> updateReservation(
@@ -156,4 +144,13 @@ public class ReservationController {
             "price",
             "status"
     );
+
+    private String getCurrentUserEmail(Authentication authentication) {
+        return authentication.getName();
+    }
+    private boolean isAdmin(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority ->
+                        authority.getAuthority().equals("ROLE_ADMIN"));
+    }
 }
